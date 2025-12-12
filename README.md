@@ -18,6 +18,15 @@
 
 ---
 
+## Infrastructure
+
+This project relies on centralized infrastructure and deployment workflows managed in the **ChaufHER Infra** repository: https://github.com/phoenixvc/chaufher-infra
+
+For mobile-specific environment variables, API contracts, and deployment checklists, see:
+https://github.com/phoenixvc/chaufher-infra/blob/main/MOBILE_CHECKLIST.md
+
+---
+
 ## Quick Start
 
 ### For Developers
