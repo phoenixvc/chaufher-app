@@ -2,19 +2,26 @@
 
 ## Table of Contents
 
-1. [Quick Start](#quick-start)
-2. [Development Setup](#development-setup)
-3. [Product Overview](#product-overview)
-4. [Purpose](#purpose)
-5. [Target Audience](#target-audience)
-6. [Expected Outcomes](#expected-outcomes)
-7. [Technical Architecture](#technical-architecture)
-8. [Domain Model and Data Flow](#domain-model-and-data-flow)
-9. [External Interfaces](#external-interfaces)
-10. [User Interface](#user-interface)
-11. [Quality Assurance](#quality-assurance)
-12. [Deployment](#deployment)
-13. [Advanced Safety/Panic Flow](#advanced-safetypanic-flow--app-role)
+1. [Infrastructure](#infrastructure)
+2. [Quick Start](#quick-start)
+3. [Development Setup](#development-setup)
+4. [Product Overview](#product-overview)
+5. [Purpose](#purpose)
+6. [Target Audience](#target-audience)
+7. [Expected Outcomes](#expected-outcomes)
+8. [Technical Architecture](#technical-architecture)
+9. [Domain Model and Data Flow](#domain-model-and-data-flow)
+10. [External Interfaces](#external-interfaces)
+11. [User Interface](#user-interface)
+12. [Quality Assurance](#quality-assurance)
+13. [Deployment](#deployment)
+14. [Advanced Safety/Panic Flow](#advanced-safetypanic-flow--app-role)
+15. [Multi-Repo Architecture](#multi-repo-architecture)
+16. [Development Guidelines](#development-guidelines)
+17. [Security Guidelines](#security-guidelines)
+18. [Troubleshooting](#troubleshooting)
+19. [Contributing](#contributing)
+20. [Related Repositories](#related-repositories)
 
 ---
 
@@ -765,3 +772,395 @@ T+120s: Rate limit expires
 - User can trigger another safety event if needed
 
 Result: Prevents accidental/malicious multiple triggers while preserving user access.
+```
+
+---
+
+## Multi-Repo Architecture
+
+The ChaufHER platform is a coordinated multi-repository ecosystem:
+
+```
+                    chaufher-workspace (entry point, shared docs)
+                            |
+        ┌───────────────────┼───────────────────┐
+        |                   |                   |
+   chaufher-app       chaufher-web         chaufher-api
+ (Flutter mobile)     (React admin)       (.NET backend)
+        |                   |                   |
+        └───────────────────┼───────────────────┘
+                            |
+                     chaufher-infra
+                  (Azure IaC, CI/CD)
+```
+
+**Repository Overview:**
+
+- **[chaufher-workspace](https://github.com/phoenixvc/chaufher-workspace)** – Monorepo coordination, shared documentation, local development setup
+- **chaufher-app** (this repo) – Flutter mobile client for riders/drivers; consumes REST APIs and SignalR hubs
+- **[chaufher-web](https://github.com/phoenixvc/chaufher-web)** – React admin portal for real-time oversight, incident escalation, compliance reporting
+- **[chaufher-api](https://github.com/phoenixvc/chaufher-api)** – .NET 9 backend; provides REST APIs, SignalR hubs, business logic
+- **[chaufher-infra](https://github.com/phoenixvc/chaufher-infra)** – Azure IaC (Bicep/Terraform), CI/CD pipelines, deployment automation
+
+All repositories are independently version-controlled but designed for seamless integration via well-defined API contracts.
+
+---
+
+## Development Guidelines
+
+### Naming Conventions
+
+**File & Folder Structure:**
+- **Features:** `lib/features/{feature_name}/` (e.g., `lib/features/rider/`, `lib/features/safety/`)
+- **Screens:** PascalCase, suffix with `Screen` (e.g., `BookingScreen.dart`, `RideMapScreen.dart`)
+- **BLoC Files:** PascalCase, suffix with `BLoC` or `Event`/`State` (e.g., `SafetyBLoC.dart`, `SafetyEvent.dart`)
+- **Models/Entities:** PascalCase (e.g., `User.dart`, `Trip.dart`, `SafetyEvent.dart`)
+- **Utilities/Helpers:** camelCase (e.g., `gpsHelper.dart`, `locationTracker.dart`)
+- **Constants:** UPPER_SNAKE_CASE (e.g., `RATE_LIMIT_MINUTES`, `API_TIMEOUT_SECONDS`)
+- **Variables:** camelCase (e.g., `currentLocation`, `driverId`, `tripStatus`)
+
+**Code Patterns:**
+- Use `final` instead of `var` for immutability
+- Avoid single-letter variable names (except loop counters)
+- Use meaningful error messages and descriptive variable names
+
+### Git Workflow
+
+**Branching Strategy:**
+- `main` – Production-ready code
+- `feature/your-feature` – Feature branches
+- `fix/issue-description` – Bugfix branches
+- `chore/task-description` – Non-code changes
+
+**Commit Conventions:**
+
+Use conventional commits:
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `style`
+
+Examples:
+```
+feat(safety): add panic event escalation with local rate limiting
+fix(auth): resolve JWT token refresh race condition on network resume
+docs(setup): add iOS build instructions for new developers
+```
+
+**Pull Request Process:**
+1. Create feature branch from `main`
+2. Push and open PR with descriptive title and description
+3. All checks must pass (tests, linting, code review)
+4. Address feedback from reviewers
+5. Squash and merge on approval
+6. Delete branch after merge
+
+### Code Quality Standards
+
+- **Linting:** `flutter analyze` (enforced in CI)
+- **Formatting:** `dart format .` (standardized code style)
+- **Test Coverage:** Minimum 80% for critical business logic (safety, auth, payments)
+- **Complexity:** Avoid methods exceeding 50 lines; break into smaller functions
+- **Async Patterns:** Use `async/await` consistently; avoid callback hell
+
+### Testing Requirements
+
+**Unit Tests:**
+```bash
+# Run all unit tests
+flutter test
+
+# Run specific test file
+flutter test test/features/safety/bloc_test.dart
+
+# Generate coverage report
+flutter test --coverage
+```
+
+**Widget Tests:**
+```bash
+# Run widget tests
+flutter test test/features/rider/screens
+
+# Test specific widget
+flutter test test/features/rider/screens/booking_screen_test.dart
+```
+
+**Integration Tests:**
+```bash
+# Run integration tests
+flutter test integration_test/
+
+# Test on specific device
+flutter test -d emulator-5554 integration_test/
+```
+
+---
+
+## Security Guidelines
+
+### Secrets Management
+
+**What NOT to commit:**
+- `.env` files with API keys, tokens, or secrets
+- Firebase service account JSON files
+- Private certificates or signing keys
+- Database credentials or connection strings
+- Any hardcoded API keys or webhook tokens
+
+**Secure Practices:**
+- Store all secrets in **Azure Key Vault** (per environment)
+- Use environment variables at runtime (never compile secrets)
+- Fetch credentials securely at app startup via dependency injection
+- Rotate credentials every 90 days (automated via infra)
+- Use managed identities for service-to-service authentication
+
+**Example (WRONG - never do this):**
+```dart
+// ❌ WRONG: Hardcoded secret
+const String API_KEY = "sk_live_abc123xyz789";
+```
+
+**Example (CORRECT):**
+```dart
+// ✅ CORRECT: Fetch from environment at runtime
+final String apiKey = Platform.environment['API_KEY'] ?? '';
+if (apiKey.isEmpty) throw Exception('API_KEY environment variable not set');
+```
+
+### Code Security Patterns
+
+**Input Validation:**
+```dart
+// Validate all user inputs before processing
+if (location == null || location.latitude == null) {
+  logger.error('Invalid location received');
+  return SafetyEventFailure();
+}
+```
+
+**SQL Injection Prevention:**
+- Use ORM or parameterized queries (SQLite via sqflite)
+- Never concatenate user input into SQL strings
+
+**Network Security:**
+- Always use HTTPS with certificate pinning for critical APIs
+- Validate SSL/TLS certificates
+- Never transmit sensitive data in query parameters
+
+**Secure Storage:**
+- Use `flutter_secure_storage` for tokens, credentials, encryption keys
+- Never store passwords (use tokens/OAuth)
+- Encrypt sensitive local data at rest
+
+**Logging Security:**
+- Never log passwords, API keys, or personal information
+- Log events/audit trails for security-critical actions
+- Sanitize PII (email, phone, location) in logs
+
+---
+
+## Troubleshooting
+
+### Common Setup Issues
+
+**Flutter not found in PATH**
+```bash
+# Verify Flutter installation
+flutter --version
+
+# Add Flutter to PATH (if needed)
+export PATH="$PATH:$HOME/flutter/bin"
+export PATH="$PATH:$HOME/flutter/bin/cache/dart-sdk/bin"
+```
+
+**Android SDK/NDK not found**
+```bash
+# Configure Android SDK
+flutter config --android-sdk /path/to/android/sdk
+flutter config --android-ndk /path/to/android/ndk
+
+# Verify setup
+flutter doctor
+```
+
+**iOS setup issues (macOS only)**
+```bash
+# Install CocoaPods
+sudo gem install cocoapods
+
+# Update iOS pods
+cd ios && pod repo update && pod install && cd ..
+
+# Clean build
+flutter clean
+flutter pub get
+flutter run
+```
+
+**Gradle build fails**
+```bash
+# Clear Gradle cache
+rm -rf ~/.gradle/caches/
+rm -rf android/.gradle
+
+# Rebuild
+flutter clean
+flutter pub get
+flutter run
+```
+
+**Emulator/device not found**
+```bash
+# List available devices
+flutter devices
+
+# Start Android emulator
+emulator @pixel_4_api_30
+
+# Connect physical device via USB
+adb devices
+```
+
+**Hot reload not working**
+```bash
+# Restart the development server
+flutter run
+
+# Full rebuild if persistent
+flutter clean && flutter run
+```
+
+**API calls fail with certificate pinning error**
+```bash
+# Verify certificate is installed correctly in infrastructure
+# Check Azure Key Vault has correct certificate
+# Ensure API_URL in .env matches certificate CN/SAN
+```
+
+**Panic button not triggering safety event**
+```bash
+# Check network connectivity
+# Verify rate limit: can only trigger once per X minutes
+# Ensure trip is in active state (not completed)
+# Review logs: flutter logs | grep -i safety
+```
+
+### Getting Help
+
+- Check [chaufher-workspace](https://github.com/phoenixvc/chaufher-workspace) for project-wide documentation
+- Review [chaufher-api](https://github.com/phoenixvc/chaufher-api) for backend API issues
+- Consult [chaufher-infra](https://github.com/phoenixvc/chaufher-infra) for infrastructure/deployment questions
+- Open a GitHub issue with:
+  - Flutter version (`flutter --version`)
+  - Device/emulator info (OS, Android/iOS version)
+  - Error logs and stack trace
+  - Steps to reproduce
+  - Attempted fixes
+
+---
+
+## Contributing
+
+### Before You Commit
+
+- [ ] Code follows naming conventions and style guidelines
+- [ ] All tests pass locally: `flutter test`
+- [ ] Linting passes: `flutter analyze`
+- [ ] Code is formatted: `dart format .`
+- [ ] No secrets or credentials in commit
+- [ ] Commit message follows conventional format
+- [ ] Branch is up-to-date with `main`
+
+### Submitting a Pull Request
+
+1. **Create feature branch:**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Make changes and commit:**
+   ```bash
+   git add .
+   git commit -m "feat(scope): descriptive message"
+   ```
+
+3. **Push and open PR:**
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+4. **PR Description:**
+   Include:
+   - What problem does this solve?
+   - How did you test?
+   - Any breaking changes?
+   - Related issues/PRs
+
+5. **Code Review:**
+   - Address feedback from reviewers
+   - Re-request review after changes
+   - Ensure all checks pass (tests, lint, build)
+
+6. **Merge:**
+   - Squash and merge on approval
+   - Delete branch after merge
+
+### Code Review Checklist (For Reviewers)
+
+- [ ] Code follows naming and style conventions
+- [ ] Tests are comprehensive and passing
+- [ ] No security vulnerabilities (secrets, validation, etc.)
+- [ ] Accessibility standards met (WCAG 2.1 AA)
+- [ ] Documentation updated if needed
+- [ ] Changes align with technical architecture
+
+---
+
+## Related Repositories
+
+ChaufHER App is part of a multi-repository workspace. For coordination, shared docs, and cross-repo setup, start with:
+
+- **[chaufher-workspace](https://github.com/phoenixvc/chaufher-workspace)** – Monorepo entry point and shared documentation
+- **[chaufher-api](https://github.com/phoenixvc/chaufher-api)** – Backend REST APIs, SignalR hubs, business logic
+- **[chaufher-web](https://github.com/phoenixvc/chaufher-web)** – React admin portal for operations and compliance
+- **[chaufher-infra](https://github.com/phoenixvc/chaufher-infra)** – Azure infrastructure as code, CI/CD pipelines, deployment automation
+
+### Key Integration Points
+
+**API Contract:**
+- All REST endpoints documented in [chaufher-api](https://github.com/phoenixvc/chaufher-api)
+- SignalR hubs for real-time ride/safety event updates
+- See `MOBILE_CHECKLIST.md` in chaufher-infra for mobile-specific contracts
+
+**Authentication:**
+- JWT-based auth (OAuth2 / Azure AD B2C)
+- Tokens fetched securely; never hardcoded
+- Refresh tokens before expiry; 401 responses trigger re-login
+
+**Environment Parity:**
+- Dev, Staging, Production environments mirror each other
+- Use correct API URL for each environment (.env configuration)
+- Feature flags support staged rollouts
+
+**Incident Response:**
+- Safety events escalated to backend ops team
+- App surfaces minimal data; backend handles investigation
+- Rate limiting and fallback SMS handled cooperatively
+
+---
+
+## License
+
+[Add License Here — e.g., MIT, Apache 2.0, or proprietary]
+
+Copyright (c) 2025 ChaufHER. All rights reserved.
+
+## Acknowledgments
+
+This repository is part of the ChaufHER platform, a women-only ridesharing application prioritizing safety, privacy, and reliability. Special thanks to the DevOps, Backend, and Product teams for coordinated, multi-repo engineering excellence.
